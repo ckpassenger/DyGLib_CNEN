@@ -16,6 +16,8 @@ from models.CAWN import CAWN
 from models.TCL import TCL
 from models.GraphMixer import GraphMixer
 from models.DyGFormer import DyGFormer
+from models.NAT import NAT
+from models.CNEN import CNEN
 from models.modules import MergeLayer
 from utils.utils import set_random_seed, convert_to_gpu, get_parameter_sizes, create_optimizer
 from utils.utils import get_neighbor_sampler, NegativeEdgeSampler
@@ -121,6 +123,16 @@ if __name__ == "__main__":
                                          time_feat_dim=args.time_feat_dim, channel_embedding_dim=args.channel_embedding_dim, patch_size=args.patch_size,
                                          num_layers=args.num_layers, num_heads=args.num_heads, dropout=args.dropout,
                                          max_input_sequence_length=args.max_input_sequence_length, device=args.device)
+        elif args.model_name == 'NAT':
+            dynamic_backbone = NAT(node_raw_features, edge_raw_features, 4+3, node_raw_features.shape[0] + 1, time_dim=args.time_feat_dim, pos_dim=16, n_head=4, num_neighbors=[1, 32, 16], dropout=args.dropout,
+                                    verbosity=1, n_hops=2, replace_prob=0.9, self_dim=100, ngh_dim=4, seed = 1234, device=args.device)
+        elif args.model_name == 'CNEN':
+            dynamic_backbone = CNEN(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features,
+                                         neighbor_sampler=train_neighbor_sampler,
+                                         time_feat_dim=args.time_feat_dim,
+                                         channel_embedding_dim=args.channel_embedding_dim, update_neighbor=args.update_neighbor,
+                                         num_layers=args.num_layers, num_heads=args.num_heads, dropout=args.dropout,
+                                         max_input_sequence_length=args.max_input_sequence_length, memory_dim = args.memory_dim, output_dim= node_raw_features.shape[1],device=args.device)
         else:
             raise ValueError(f"Wrong value for model_name {args.model_name}!")
         link_predictor = MergeLayer(input_dim1=node_raw_features.shape[1], input_dim2=node_raw_features.shape[1],
@@ -237,6 +249,7 @@ if __name__ == "__main__":
                         model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_neg_src_node_ids,
                                                                           dst_node_ids=batch_neg_dst_node_ids,
                                                                           node_interact_times=batch_node_interact_times)
+                
                 else:
                     raise ValueError(f"Wrong value for model_name {args.model_name}!")
                 # get positive and negative probabilities, shape (batch_size, )
