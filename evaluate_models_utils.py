@@ -36,7 +36,7 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
     assert evaluate_neg_edge_sampler.seed is not None
     evaluate_neg_edge_sampler.reset_random_state()
 
-    if model_name in ['DyRep', 'TGAT', 'TGN', 'CAWN', 'TCL', 'GraphMixer', 'DyGFormer']:
+    if model_name in ['DyRep', 'TGAT', 'TGN', 'CAWN', 'TCL', 'GraphMixer', 'DyGFormer', 'CNEN']:
         # evaluation phase use all the graph information
         model[0].set_neighbor_sampler(neighbor_sampler)
 
@@ -134,11 +134,41 @@ def evaluate_model_link_prediction(model_name: str, model: nn.Module, neighbor_s
                     model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_neg_src_node_ids,
                                                                       dst_node_ids=batch_neg_dst_node_ids,
                                                                       node_interact_times=batch_node_interact_times)
+            elif model_name in ['NAT']:
+                negative_probabilities = \
+                    model[0].compute_src_dst_node_temporal_embeddings(src_l_cut=batch_src_node_ids,
+                                      tgt_l_cut=batch_neg_dst_node_ids,
+                                      cut_time_l=batch_node_interact_times,
+                                      e_idx_l=batch_edge_ids, update=False)
+
+                positive_probabilities = \
+                    model[0].compute_src_dst_node_temporal_embeddings(src_l_cut=batch_src_node_ids,
+                                      tgt_l_cut=batch_dst_node_ids,
+                                      cut_time_l=batch_node_interact_times,
+                                      e_idx_l=batch_edge_ids)
+            elif model_name in ['CNEN']:
+              # note that negative nodes do not change the memories while the positive nodes change the memories,
+              # we need to first compute the embeddings of negative nodes for memory-based models
+              # get temporal embedding of negative source and negative destination nodes
+              # two Tensors, with shape (batch_size, node_feat_dim)  
+              batch_neg_src_node_embeddings, batch_neg_dst_node_embeddings = \
+                    model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_neg_src_node_ids,
+                                                                      dst_node_ids=batch_neg_dst_node_ids,
+                                                                      node_interact_times=batch_node_interact_times,positive = False)
+
+              # get temporal embedding of source and destination nodes
+              # two Tensors, with shape (batch_size, node_feat_dim)
+              batch_src_node_embeddings, batch_dst_node_embeddings = \
+                    model[0].compute_src_dst_node_temporal_embeddings(src_node_ids=batch_src_node_ids,
+                                                                      dst_node_ids=batch_dst_node_ids,
+                                                                      node_interact_times=batch_node_interact_times, positive = True)
+          
             else:
                 raise ValueError(f"Wrong value for model_name {model_name}!")
             # get positive and negative probabilities, shape (batch_size, )
-            positive_probabilities = model[1](input_1=batch_src_node_embeddings, input_2=batch_dst_node_embeddings).squeeze(dim=-1).sigmoid()
-            negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings, input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()
+            if model_name not in ['NAT']:
+                positive_probabilities = model[1](input_1=batch_src_node_embeddings, input_2=batch_dst_node_embeddings).squeeze(dim=-1).sigmoid()
+                negative_probabilities = model[1](input_1=batch_neg_src_node_embeddings, input_2=batch_neg_dst_node_embeddings).squeeze(dim=-1).sigmoid()
 
             predicts = torch.cat([positive_probabilities, negative_probabilities], dim=0)
             labels = torch.cat([torch.ones_like(positive_probabilities), torch.zeros_like(negative_probabilities)], dim=0)
