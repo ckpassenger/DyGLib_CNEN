@@ -13,6 +13,8 @@ from models.CAWN import CAWN
 from models.TCL import TCL
 from models.GraphMixer import GraphMixer
 from models.DyGFormer import DyGFormer
+from models.NAT import NAT
+from models.CNEN import CNEN
 from models.modules import MergeLayer
 from utils.utils import set_random_seed, convert_to_gpu, get_parameter_sizes
 from utils.utils import get_neighbor_sampler, NegativeEdgeSampler
@@ -131,6 +133,16 @@ if __name__ == "__main__":
                                              time_feat_dim=args.time_feat_dim, channel_embedding_dim=args.channel_embedding_dim, patch_size=args.patch_size,
                                              num_layers=args.num_layers, num_heads=args.num_heads, dropout=args.dropout,
                                              max_input_sequence_length=args.max_input_sequence_length, device=args.device)
+            elif args.model_name == 'NAT':
+                dynamic_backbone = NAT(node_raw_features, edge_raw_features, 4+3, node_raw_features.shape[0] + 1, time_dim=args.time_feat_dim, pos_dim=16, n_head=4, num_neighbors=[1, 32, 16], dropout=args.dropout,
+                                    verbosity=1, n_hops=2, replace_prob=0.9, self_dim=100, ngh_dim=4, seed = 1234, device=args.device)
+            elif args.model_name == 'CNEN':
+                dynamic_backbone = CNEN(node_raw_features=node_raw_features, edge_raw_features=edge_raw_features,
+                                         neighbor_sampler=train_neighbor_sampler,
+                                         time_feat_dim=args.time_feat_dim,
+                                         channel_embedding_dim=args.channel_embedding_dim, update_neighbor=args.update_neighbor,
+                                         num_layers=args.num_layers, num_heads=args.num_heads, dropout=args.dropout,
+                                         max_input_sequence_length=args.max_input_sequence_length, memory_dim = args.memory_dim, output_dim= node_raw_features.shape[1],device=args.device)
             else:
                 raise ValueError(f"Wrong value for model_name {args.model_name}!")
             link_predictor = MergeLayer(input_dim1=node_raw_features.shape[1], input_dim2=node_raw_features.shape[1],
@@ -148,7 +160,7 @@ if __name__ == "__main__":
 
             model = convert_to_gpu(model, device=args.device)
             # put the node raw messages of memory-based models on device
-            if args.model_name in ['JODIE', 'DyRep', 'TGN']:
+            if args.model_name in ['JODIE', 'DyRep', 'TGN', 'NAT', 'CNEN']:
                 for node_id, node_raw_messages in model[0].memory_bank.node_raw_messages.items():
                     new_node_raw_messages = []
                     for node_raw_message in node_raw_messages:
@@ -161,7 +173,7 @@ if __name__ == "__main__":
             logger.info(f'get final performance on dataset {args.dataset_name}...')
 
             # the saved best model of memory-based models cannot perform validation since the stored memory has been updated by validation data
-            if args.model_name not in ['JODIE', 'DyRep', 'TGN']:
+            if args.model_name not in ['JODIE', 'DyRep', 'TGN', 'NAT', 'CNEN']:
                 val_losses, val_metrics = evaluate_model_link_prediction(model_name=args.model_name,
                                                                          model=model,
                                                                          neighbor_sampler=full_neighbor_sampler,
@@ -182,7 +194,7 @@ if __name__ == "__main__":
                                                                                            num_neighbors=args.num_neighbors,
                                                                                            time_gap=args.time_gap)
 
-            if args.model_name in ['JODIE', 'DyRep', 'TGN']:
+            if args.model_name in ['JODIE', 'DyRep', 'TGN', 'NAT', 'CNEN']:
                 # the memory in the best model has seen the validation edges, we need to backup the memory for new testing nodes
                 val_backup_memory_bank = model[0].memory_bank.backup_memory_bank()
 
@@ -196,7 +208,7 @@ if __name__ == "__main__":
                                                                        num_neighbors=args.num_neighbors,
                                                                        time_gap=args.time_gap)
 
-            if args.model_name in ['JODIE', 'DyRep', 'TGN']:
+            if args.model_name in ['JODIE', 'DyRep', 'TGN', 'NAT', 'CNEN']:
                 # reload validation memory bank for new testing nodes
                 model[0].memory_bank.reload_memory_bank(val_backup_memory_bank)
 
@@ -212,7 +224,7 @@ if __name__ == "__main__":
             # store the evaluation metrics at the current run
             val_metric_dict, new_node_val_metric_dict, test_metric_dict, new_node_test_metric_dict = {}, {}, {}, {}
 
-            if args.model_name not in ['JODIE', 'DyRep', 'TGN']:
+            if args.model_name not in ['JODIE', 'DyRep', 'TGN', 'NAT', 'CNEN']:
                 logger.info(f'validate loss: {np.mean(val_losses):.4f}')
                 for metric_name in val_metrics[0].keys():
                     average_val_metric = np.mean([val_metric[metric_name] for val_metric in val_metrics])
@@ -240,7 +252,7 @@ if __name__ == "__main__":
             single_run_time = time.time() - run_start_time
             logger.info(f'Run {run + 1} cost {single_run_time:.2f} seconds.')
 
-            if args.model_name not in ['JODIE', 'DyRep', 'TGN']:
+            if args.model_name not in ['JODIE', 'DyRep', 'TGN', 'NAT', 'CNEN']:
                 val_metric_all_runs.append(val_metric_dict)
                 new_node_val_metric_all_runs.append(new_node_val_metric_dict)
             test_metric_all_runs.append(test_metric_dict)
@@ -252,7 +264,7 @@ if __name__ == "__main__":
                 logger.removeHandler(ch)
 
             # save model result
-            if args.model_name not in ['JODIE', 'DyRep', 'TGN']:
+            if args.model_name not in ['JODIE', 'DyRep', 'TGN', 'NAT', 'CNEN']:
                 result_json = {
                     "validate metrics": {metric_name: f'{val_metric_dict[metric_name]:.4f}' for metric_name in val_metric_dict},
                     "new node validate metrics": {metric_name: f'{new_node_val_metric_dict[metric_name]:.4f}' for metric_name in new_node_val_metric_dict},
@@ -276,7 +288,7 @@ if __name__ == "__main__":
         # store the average metrics at the log of the last run
         logger.info(f'metrics over {args.num_runs} runs:')
 
-        if args.model_name not in ['JODIE', 'DyRep', 'TGN']:
+        if args.model_name not in ['JODIE', 'DyRep', 'TGN', 'NAT', 'CNEN']:
             for metric_name in val_metric_all_runs[0].keys():
                 logger.info(f'validate {metric_name}, {[val_metric_single_run[metric_name] for val_metric_single_run in val_metric_all_runs]}')
                 logger.info(f'average validate {metric_name}, {np.mean([val_metric_single_run[metric_name] for val_metric_single_run in val_metric_all_runs]):.4f} '
