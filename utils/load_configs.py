@@ -15,7 +15,7 @@ def get_link_prediction_args(is_evaluation: bool = False):
                         choices=['wikipedia', 'reddit', 'mooc', 'lastfm', 'myket', 'enron', 'SocialEvo', 'uci', 'Flights', 'CanParl', 'USLegis', 'UNtrade', 'UNvote', 'Contacts'])
     parser.add_argument('--batch_size', type=int, default=200, help='batch size')
     parser.add_argument('--model_name', type=str, default='DyGFormer', help='name of the model, note that EdgeBank is only applicable for evaluation',
-                        choices=['JODIE', 'DyRep', 'TGAT', 'TGN', 'CAWN', 'EdgeBank', 'TCL', 'GraphMixer', 'DyGFormer'])
+                        choices=['JODIE', 'DyRep', 'TGAT', 'TGN', 'CAWN', 'EdgeBank', 'TCL', 'GraphMixer', 'DyGFormer', 'NAT', 'CNEN'])
     parser.add_argument('--gpu', type=int, default=0, help='number of gpu to use')
     parser.add_argument('--num_neighbors', type=int, default=20, help='number of neighbors to sample for each node')
     parser.add_argument('--sample_neighbor_strategy', type=str, default='recent', choices=['uniform', 'recent', 'time_interval_aware'], help='how to sample historical neighbors')
@@ -49,6 +49,8 @@ def get_link_prediction_args(is_evaluation: bool = False):
     parser.add_argument('--negative_sample_strategy', type=str, default='random', choices=['random', 'historical', 'inductive'],
                         help='strategy for the negative edge sampling')
     parser.add_argument('--load_best_configs', action='store_true', default=False, help='whether to load the best configurations')
+    parser.add_argument('--memory_dim', type=int, default=64, help='dimension for neighbor hashtable')
+    parser.add_argument('--update_neighbor', action='store_true', default=True, help='whether to update neighbor hashtable')
 
     try:
         args = parser.parse_args()
@@ -232,6 +234,36 @@ def load_link_prediction_best_configs(args: argparse.Namespace):
             args.dropout = 0.0
         else:
             args.dropout = 0.1
+    elif args.model_name == 'CNEN':
+        args.num_layers = 2
+        args.dropout = 0.1
+        elif args.dataset_name in ['lastfm']:
+            args.max_input_sequence_length = 100
+            args.memory_dim = 64
+        elif args.dataset_name in ['reddit']:
+            args.max_input_sequence_length = 64
+            args.memory_dim = 128
+        elif args.dataset_name in ['mooc']:
+            args.max_input_sequence_length = 4
+            args.memory_dim = 64
+        elif args.dataset_name in ['enron']:
+            args.max_input_sequence_length = 4
+            args.memory_dim = 32
+        elif args.dataset_name in ['SocialEvo']:
+            args.max_input_sequence_length = 32
+            args.memory_dim = 64
+        elif args.dataset_name in ['Flights']:
+            args.max_input_sequence_length = 100
+            args.memory_dim = 64
+         elif args.dataset_name in ['UNTrade']:
+            args.max_input_sequence_length = 20
+            args.memory_dim = 64
+        elif args.dataset_name in ['UNVote']:
+            args.max_input_sequence_length = 2
+            args.memory_dim = 4
+        else:
+            args.max_input_sequence_length = 10
+            args.memory_dim = 64
     else:
         raise ValueError(f"Wrong value for model_name {args.model_name}!")
 
